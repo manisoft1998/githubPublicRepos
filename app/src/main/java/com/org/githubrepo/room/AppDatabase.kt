@@ -10,7 +10,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun githubRepoDao(): GithubRepoDao
 
     companion object {
-        var INSTANCE: AppDatabase? = null
+        private var INSTANCE: AppDatabase? = null
         fun getDatabase(context: Context): AppDatabase {
             val instance = INSTANCE
             if (instance != null)

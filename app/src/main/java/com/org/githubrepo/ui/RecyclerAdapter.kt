@@ -1,5 +1,6 @@
 package com.org.githubrepo.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
@@ -13,22 +14,18 @@ import com.org.githubrepo.room.GithubRepo
 
 class RecyclerAdapter : RecyclerView.Adapter<RecyclerAdapter.MyViewHolder>() {
 
-    var item = ArrayList<GithubRepo>()
+    private var item = ArrayList<GithubRepo>()
 
-    fun setData(item: ArrayList<GithubRepo>) {
-        this.item = item
-        notifyDataSetChanged()
-    }
 
     class MyViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val repoName: TextView = view.findViewById(R.id.name)
-        val decription: TextView = view.findViewById(R.id.description)
-        val imageView: ImageView = view.findViewById(R.id.avatar_url)
+        private val repoName: TextView = view.findViewById(R.id.name)
+        private val description: TextView = view.findViewById(R.id.description)
+        private val imageView: ImageView = view.findViewById(R.id.avatar_url)
         fun bind(item: GithubRepo, context: Context) {
-            repoName.setText(item.full_name)
-            decription.setText(item.description)
+            repoName.text = item.full_name
+            description.text = item.description
             Glide.with(context).load(item.avatar_url).placeholder(R.drawable.placeholder)
-                .into(imageView);
+                .into(imageView)
 
         }
 
@@ -41,10 +38,25 @@ class RecyclerAdapter : RecyclerView.Adapter<RecyclerAdapter.MyViewHolder>() {
     }
 
     override fun onBindViewHolder(holder: MyViewHolder, position: Int) {
-        holder.bind(item.get(position), holder.itemView.context)
+        holder.bind(item[position], holder.itemView.context)
     }
 
     override fun getItemCount(): Int {
         return item.size
     }
+
+    @SuppressLint("NotifyDataSetChanged")
+    fun setData(githubRepoItems: ArrayList<GithubRepo>) {
+        item.clear()
+        item = githubRepoItems
+        notifyDataSetChanged()
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    fun setFilter(githubRepoList: List<GithubRepo>) {
+        item.clear()
+        item.addAll(githubRepoList)
+        notifyDataSetChanged()
+    }
+
 }

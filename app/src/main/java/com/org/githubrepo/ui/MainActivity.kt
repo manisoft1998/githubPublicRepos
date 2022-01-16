@@ -1,58 +1,125 @@
 package com.org.githubrepo.ui
 
-import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import android.widget.Toast
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.widget.Button
+import android.widget.LinearLayout
+import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.org.githubrepo.R
-import com.org.githubrepo.model.RepoList
-import com.org.githubrepo.network.ApiService
-import com.org.githubrepo.network.RetroInstance
 import com.org.githubrepo.room.GithubRepo
+import com.org.githubrepo.util.CommonUtils
 import com.org.githubrepo.viewmodel.MyViewModel
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
+import android.widget.ProgressBar
+import android.widget.Toast
+import androidx.core.view.isVisible
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
-class MainActivity : AppCompatActivity() {
-    private val TAG: String = "MainActivity"
+
+class MainActivity : AppCompatActivity(), SearchView.OnQueryTextListener {
+
     private lateinit var myViewModel: MyViewModel
     private lateinit var recyclerAdapter: RecyclerAdapter
+    private var repoList = ArrayList<GithubRepo>()
+    private lateinit var onlineLayout: LinearLayout
+    private lateinit var offlineLayout: LinearLayout
+    private lateinit var tryAgainBtn: Button
+    private var progressBar: ProgressBar? = null
+    private lateinit var swipeToRefresh: SwipeRefreshLayout
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        initViews()
         initRecyclerView()
-        makeApiCall()
         initViewModel()
+
     }
 
+    // init the views
+    private fun initViews() {
+        setSupportActionBar(findViewById(R.id.tool_bar))
+        supportActionBar?.setDisplayShowTitleEnabled(false)
+
+        onlineLayout = findViewById(R.id.online_layout)
+        offlineLayout = findViewById(R.id.offline_layout)
+        tryAgainBtn = findViewById(R.id.try_again_btn)
+        progressBar = findViewById(R.id.progressBar1)
+
+        swipeToRefresh = findViewById(R.id.swipe_to_refresh)
+
+        swipeToRefresh.setOnRefreshListener {
+            Log.d("MyViewModel", "calling refresh: ")
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                swipeToRefresh.isRefreshing = false
+            }, 2000)
+
+            myViewModel.getRepoLiveDataListFromServer()
+
+        }
+
+        tryAgainBtn.setOnClickListener {
+            if (CommonUtils(this@MainActivity).isNetworkAvailable()) {
+                myViewModel.getRepoLiveDataListFromServer()
+            } else {
+                Toast.makeText(application, "no internet", Toast.LENGTH_SHORT)
+                    .show()
+            }
+        }
+    }
+
+    //init the view model
     private fun initViewModel() {
-        myViewModel = ViewModelProvider(this).get(MyViewModel::class.java)
+
+        myViewModel = ViewModelProvider(this@MainActivity)[MyViewModel::class.java]
+
+        showProgress()
 
         myViewModel.readDataFromDB.observe(this, {
             if (it != null) {
-                /* if (it.size == 0) {
-                     if (isNetworkAvailable(this)) {
-                         makeApiCall()
-                     } else {
-
-                     }
-                 }*/
-                recyclerAdapter.setData(it as ArrayList<GithubRepo>)
-//                Toast.makeText(this@MainActivity, it.size.toString(), Toast.LENGTH_SHORT).show()
+                repoList = it as ArrayList<GithubRepo>
+                recyclerAdapter.setData(repoList)
             }
         })
     }
 
+    // show progress state
+    private fun showProgress() {
+
+        myViewModel.getIsLoading().observe(this, {
+            if (it.equals("load")) {
+                if (offlineLayout.isVisible) {
+                    offlineLayout.visibility = View.GONE
+                    onlineLayout.visibility = View.VISIBLE
+                }
+                progressBar?.visibility = View.VISIBLE
+
+            } else if (it.equals("completed")) {
+                if (offlineLayout.isVisible) {
+                    offlineLayout.visibility = View.GONE
+                    onlineLayout.visibility = View.VISIBLE
+                }
+                progressBar?.visibility = View.GONE
+
+            } else {
+                onlineLayout.visibility = View.GONE
+                offlineLayout.visibility = View.VISIBLE
+            }
+        })
+    }
+
+    //init the recyclerview
     private fun initRecyclerView() {
         val recyclerView: RecyclerView = findViewById(R.id.recycler_view)
         recyclerView.layoutManager = LinearLayoutManager(this)
@@ -61,68 +128,44 @@ class MainActivity : AppCompatActivity() {
         recyclerView.adapter = recyclerAdapter
     }
 
-    private fun makeApiCall() {
-        val call = RetroInstance.getRetrofitInstance().create(ApiService::class.java)
-        call.getRepositories().enqueue(object : Callback<List<RepoList>> {
-            override fun onResponse(
-                call: Call<List<RepoList>>,
-                response: Response<List<RepoList>>
-            ) {
-                if (response.isSuccessful) {
-                    if (response.body() != null) {
-                        Toast.makeText(this@MainActivity, "api called", Toast.LENGTH_SHORT).show()
-                        val myList = ArrayList<GithubRepo>()
-
-                        for (items in response.body()!!) {
-                            myList.add(
-                                GithubRepo(
-                                    items.id,
-                                    items.fullName,
-                                    items.description,
-                                    items.owner.avatarUrl
-                                )
-                            )
-
-                        }
-                        myViewModel.addData(myList)
-                    }
-                }
-            }
-
-            override fun onFailure(call: Call<List<RepoList>>, t: Throwable) {
-                Log.e(TAG, "onFailure: " + t.message)
-            }
-
-        })
+    // filter the repos from list
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.search_menu, menu)
+        return true
     }
 
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == R.id.search_view) {
+            val searchView = item.actionView as SearchView
+            searchView.setOnQueryTextListener(this)
+        }
+        return super.onOptionsItemSelected(item)
+    }
 
-    fun isNetworkAvailable(context: Context?): Boolean {
-        if (context == null) return false
-        val connectivityManager =
-            context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val capabilities =
-                connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
-            if (capabilities != null) {
-                when {
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> {
-                        return true
-                    }
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> {
-                        return true
-                    }
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> {
-                        return true
-                    }
-                }
-            }
-        } else {
-            val activeNetworkInfo = connectivityManager.activeNetworkInfo
-            if (activeNetworkInfo != null && activeNetworkInfo.isConnected) {
-                return true
+    override fun onQueryTextSubmit(query: String?): Boolean {
+        if (repoList.size != 0) {
+            val filteredRepoList: ArrayList<GithubRepo> = filter(repoList, query!!)
+            recyclerAdapter.setFilter(filteredRepoList)
+        }
+        return true
+    }
+
+    override fun onQueryTextChange(newText: String?): Boolean {
+        if (repoList.size != 0) {
+            val filteredRepoList: ArrayList<GithubRepo> = filter(repoList, newText!!)
+            recyclerAdapter.setFilter(filteredRepoList)
+        }
+        return true
+    }
+
+    private fun filter(repoList: ArrayList<GithubRepo>, query: String): ArrayList<GithubRepo> {
+        val mRepoList = ArrayList<GithubRepo>()
+        for (items in repoList) {
+            if (items.full_name.toString().lowercase().contains(query)) {
+                mRepoList.add(items)
             }
         }
-        return false
+        return mRepoList
     }
+
 }
